@@ -1,0 +1,24 @@
+<?php
+
+/**
+ * @file
+ * Contains api_solutions.module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function api_solutions_help($route_name, RouteMatchInterface $route_match)
+{
+    switch ($route_name) {
+        case 'help.page.api_solutions':
+            $output = '';
+            $output .= '<h3>' . t('About') . '</h3>';
+            $output .= '<p>' . t('Combined API Solutions Module.') . '</p>';
+            return $output;
+
+        default:
+    }
+}

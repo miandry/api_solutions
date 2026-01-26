@@ -1,0 +1,17 @@
+services:
+  api_solutions.crud:
+    class: Drupal\api_solutions\CRUDService
+    arguments: []
+  api_solutions.api_crud:
+    class: Drupal\api_solutions\APIService
+    arguments: []
+  api_solutions.manager:
+    class: Drupal\api_solutions\ApiJsonParser
+    arguments: []
+  # Aliases for compatibility if needed
+  crud:
+    alias: api_solutions.crud
+  api.crud:
+    alias: api_solutions.api_crud
+  simple_json_api.manager:
+    alias: api_solutions.manager

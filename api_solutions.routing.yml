@@ -1,0 +1,106 @@
+# General API Routes
+api_solutions.generate_token:
+  path: '/api_solutions/generate/token'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::generateToken'
+    _title: 'Generate Token'
+  requirements:
+    _permission: 'access content'
+
+api_solutions.save:
+  path: '/api_solutions/save'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::save'
+    _title: 'API Save'
+  requirements:
+    _permission: 'access content'
+
+# Consolidated User Routes
+api_solutions.user.login:
+  path: '/api_solutions/user/login'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::login'
+    _title: 'User Login'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.user.register:
+  path: '/api_solutions/user/register'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::register'
+    _title: 'User Register'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.user.edit:
+  path: '/api_solutions/user/edit'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::userEdit'
+    _title: 'User Edit'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.user.forgot_password:
+  path: '/api_solutions/user/forgot-password'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::sendResetEmail'
+    _title: 'Forgot Password API'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+# Content and Utility Routes
+api_solutions.api.v1.term:
+  path: '/api_solutions/api/v1/term/{vid}'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiTerm'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.uploader:
+  path: '/api_solutions/action/uploader'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::uploader'
+  requirements:
+    _permission: 'access content'
+
+api_solutions.api.v1.menu:
+  path: '/api_solutions/api/v1/menu'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiMenu'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.api.v1.list:
+  path: '/api_solutions/api/v1/list'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiListJson'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.api.v2.list:
+  path: '/api_solutions/api/v2/{entitype}/{bundle}'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiListJsonV2'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.api.v2.details:
+  path: '/api_solutions/api/v2/{entitype}/{bundle}/{id}'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiDetailsJsonV2'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.api.v2.users:
+  path: '/api_solutions/api/v2/users'
+  defaults:
+    _langcode: 'en'
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiUserList'
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'

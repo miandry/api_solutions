@@ -1,0 +1,12 @@
+name: API Solutions
+type: module
+description: 'Combined API solutions from mz_crud and simple_json_api.'
+package: API
+core_version_requirement: ^10 || ^11
+dependencies:
+  - drupal:node
+  - drupal:user
+  - drupal:taxonomy
+  - drupal:system
+  - drupal_helper:drupal_helper
+  - entity_parser:entity_parser
