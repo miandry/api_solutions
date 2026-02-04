@@ -129,7 +129,7 @@ class CRUDBaseService implements CRUDInterface
         $uuid_key = $uuid->generate();
         $key_label = \Drupal::entityTypeManager()->getDefinition($entity_type)->getKey('label');
         $array = array(
-            $key_label => "crud empty",
+            $key_label => "empty",
             $entity_def->get('entity_keys')['bundle'] => $bundle,
             "uuid" => $uuid_key
         );

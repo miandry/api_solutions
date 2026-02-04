@@ -1,6 +1,6 @@
 name: API Solutions
 type: module
-description: 'Combined API solutions from mz_crud and simple_json_api.'
+description: 'Combined API solutions for CRUD operations and content retrieval.'
 package: API
 core_version_requirement: ^9 || ^10 || ^11
 dependencies:
