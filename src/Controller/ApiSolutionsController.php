@@ -59,6 +59,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
      */
     protected function getTokenFromHeader()
     {
+        $headers = \Drupal::request()->headers->all();
         $auth_header = \Drupal::request()->headers->get('Authorization');
         if ($auth_header && preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
             return $matches[1];
@@ -67,7 +68,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     }
 
     /**
-     * Save endpoint logic (from mz_crud).
+     * Save endpoint logic.
      */
     public function save()
     {
@@ -209,16 +210,6 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                     $json['token'] = $service->generateToken($user);
                     $json['status'] = ($password_hasher->check($password, $user->getPassword()));
                     if ($json['status']) {
-                        if ($user_array['field_adresse']) {
-                            $adress = array_values($user_array['field_adresse'])[0];
-                            $adress_array = explode('-', $adress['field_adress']);
-                            $json['adress'] = [
-                                'city' => ($adress_array[1] ?? ""),
-                                'location' => ($adress_array[2] ?? ""),
-                                'province' => ($adress_array[0] ?? "")
-                            ];
-                            $json['phone'] = ($adress['field_phone']) ? $adress['field_phone'] : "";
-                        }
                         $json['id'] = $user->id();
                         $json['data'] = $user_array;
                     } else {
@@ -241,38 +232,57 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     public function userEdit()
     {
         $method = \Drupal::request()->getMethod();
-        $json = [];
+        $json = ['status' => false];
         if ($method == "POST") {
             $content = \Drupal::request()->getContent();
             if (!empty($content)) {
                 $data = json_decode($content, TRUE);
-                $json = $data;
-                $json['status'] = false;
                 $service = \Drupal::service('api_solutions.api_crud');
+
+                $current_name = $data['name'] ?? NULL;
                 $token = $this->getTokenFromHeader() ?: ($data['token'] ?? NULL);
-                $name = $data['name'] ?? NULL;
-                if ($name && $token && $service->isTokenValid($name, $token)) {
-                    if ($data['phone'] || isset($data['mail'])) {
-                        $field_adress = [
-                            'field_adress' => ($data['adress']['province'] ?? '') . " - " . ($data['adress']['city'] ?? '') . " - " . ($data['adress']['location'] ?? ''),
-                            'field_email' => $data['mail'] ?? '',
-                            'field_phone' => $data['phone'] ?? ''
-                        ];
-                        $adress = \Drupal::service('api_solutions.crud')->save('paragraph', 'adress', $field_adress);
-                        $user = user_load_by_name($name);
-                        if ($user) {
-                            if (isset($data['mail'])) {
-                                $user->setEmail($data['mail']);
-                            }
-                            $user->set("field_adresse", $adress);
+
+                if ($current_name && $token && $service->isTokenValid($current_name, $token)) {
+                    $user = user_load_by_name($current_name);
+                    if ($user) {
+                        $updated = false;
+
+                        // Update Email
+                        $email = $data['email'] ?? ($data['mail'] ?? NULL);
+                        if ($email) {
+                            $user->setEmail($email);
+                            $updated = true;
+                        }
+
+                        // Update Username (Name)
+                        $new_name = $data['new_name'] ?? NULL;
+                        if ($new_name) {
+                            $user->setUsername($new_name);
+                            $updated = true;
+                        }
+
+                        // Update Password
+                        $password = $data['password'] ?? ($data['pass'] ?? NULL);
+                        if ($password) {
+                            $user->setPassword($password);
+                            $updated = true;
+                        }
+
+                        if ($updated) {
                             $json['status'] = (bool) $user->save();
                             $json['id'] = $user->id();
+                        } else {
+                            $json['message'] = "No valid fields provided for update (email, new_name, password)";
                         }
+                    } else {
+                        $json['message'] = "User not found";
                     }
                 } else {
                     $json['message'] = "Authentication failed";
                 }
             }
+        } else {
+            $json['message'] = "POST method is required ";
         }
         return new JsonResponse($json);
     }
@@ -403,15 +413,16 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
             $email = $data['email'];
             $users = \Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $email]);
             $user = reset($users);
-            if (!$user) {
-                return new JsonResponse(['status' => 'error', 'message' => 'User with this email does not exist.']);
-            }
-            $login_url = user_pass_reset_url($user);
-            $subject = "Password reset request";
-            $body = "Click here to reset: " . $login_url;
-            $service = \Drupal::service("mz_email.default");
-            if ($service && $service->sendMail($email, $body, $subject)) {
-                return new JsonResponse(['status' => 'success', 'message' => 'Email sent.']);
+            if ($user instanceof \Drupal\user\UserInterface) {
+                $login_url = user_pass_reset_url($user);
+                $subject = "Password reset request";
+                $body = "Click here to reset: " . $login_url;
+                $service = \Drupal::service("mz_email.default");
+                if ($service && $service->sendMail($email, $body, $subject)) {
+                    return new JsonResponse(['status' => 'success', 'message' => 'Email sent.']);
+                }
+            } else {
+                return new JsonResponse(['status' => 'error', 'message' => 'User not found or invalid.']);
             }
         }
         return new JsonResponse(['status' => 'error'], 500);

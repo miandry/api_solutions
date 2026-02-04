@@ -57,8 +57,15 @@ curl -X POST http://yoursite.com/api_solutions/user/register \
 curl -X POST http://yoursite.com/api_solutions/user/edit \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "newuser", "phone": "555-0199", "mail": "updated@example.com", "adress": {"province": "P", "city": "C", "location": "L"}}'
+  -d '{
+    "name": "current_username",
+    "email": "updated@example.com",
+    "new_name": "new_username",
+    "password": "new_secure_password"
+  }'
 ```
+> [!NOTE]
+> `name` is required for identification. You can update `email`, `new_name` (username), and `password`.
 
 #### Forgot Password
 - **Endpoint**: `/user/forgot-password`
