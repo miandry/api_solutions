@@ -116,10 +116,23 @@ curl -X GET "http://yoursite.com/api_solutions/api/v1/list?entitype=node&bundle=
 #### Advanced List (v2)
 - **Endpoint**: `/api/v2/{entitype}/{bundle}`
 - **Method**: `GET`
+- **Parameters**: 
+    - `fields[]`: (Optional) An array of field names to include in the response.
+    - `sort[val]`: (Optional) Field to sort by (e.g., `nid`, `created`).
+    - `sort[op]`: (Optional) Sort direction: `ASC` or `DESC`.
+    - `filters[field_name][val]`: (Optional) Filter by field value.
+    - `filters[field_name][op]`: (Optional) Operator (e.g., `CONTAINS`, `>`, `<`).
 - **Example**:
 ```bash
-curl -X GET "http://yoursite.com/api_solutions/api/v2/node/article?fields[]=title&fields[]=created"
+# Get articles with "Drupal" in the title, ordered by creation date
+curl -X GET "http://yoursite.com/api_solutions/api/v2/node/article?filters[title][val]=Drupal&filters[title][op]=CONTAINS&sort[val]=created&sort[op]=DESC"
 ```
+> [!TIP]
+> **Field Filtering**: By default, the API might return a large subset of fields. Use the `fields[]` parameter to specify exactly what you need. This significantly reduces payloads for mobile apps or high-traffic integrations.
+> 
+> **How it works**:
+> - Each `fields[]` entry corresponds to a Drupal machine name (e.g., `body`, `field_image`, `uid`).
+> - You can add as many as needed: `?fields[]=title&fields[]=body&fields[]=field_tags`.
 
 #### Entity Details (v2)
 - **Endpoint**: `/api/v2/{entitype}/{bundle}/{id}`
