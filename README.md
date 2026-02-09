@@ -122,10 +122,12 @@ curl -X GET "http://yoursite.com/api_solutions/api/v1/list?entitype=node&bundle=
     - `sort[op]`: (Optional) Sort direction: `ASC` or `DESC`.
     - `filters[field_name][val]`: (Optional) Filter by field value.
     - `filters[field_name][op]`: (Optional) Operator (e.g., `CONTAINS`, `>`, `<`).
+    - `changes[old_name]=new_name`: (Optional) Rename an output field.
+    - `values[field_name]=constant_value`: (Optional) Inject a fixed value into the results.
 - **Example**:
 ```bash
-# Get articles with "Drupal" in the title, ordered by creation date
-curl -X GET "http://yoursite.com/api_solutions/api/v2/node/article?filters[title][val]=Drupal&filters[title][op]=CONTAINS&sort[val]=created&sort[op]=DESC"
+# Get articles with "Drupal" in the title, rename 'title' to 'article_name' and add a source field
+curl -X GET "http://yoursite.com/api_solutions/api/v2/node/article?filters[title][val]=Drupal&filters[title][op]=CONTAINS&changes[title]=article_name&values[source]=MobileApp"
 ```
 > [!TIP]
 > **Field Filtering**: By default, the API might return a large subset of fields. Use the `fields[]` parameter to specify exactly what you need. This significantly reduces payloads for mobile apps or high-traffic integrations.

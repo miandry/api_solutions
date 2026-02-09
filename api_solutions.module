@@ -7,6 +7,11 @@
 
 use Drupal\Core\Routing\RouteMatchInterface;
 
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\user\Entity\User;
+use Drupal\Component\Utility\Crypt;
+
 /**
  * Implements hook_help().
  */
@@ -22,3 +27,74 @@ function api_solutions_help($route_name, RouteMatchInterface $route_match)
         default:
     }
 }
+
+/**
+ * Implements hook_user_insert().
+ */
+function api_solutions_user_insert(\Drupal\user\UserInterface $user)
+{
+    if ($user->hasField('field_api_token') && $user->get('field_api_token')->isEmpty()) {
+        $token = \Drupal\Component\Utility\Crypt::hashBase64($user->getAccountName() . $user->getPassword());
+        $user->set('field_api_token', $token);
+        $user->save();
+    }
+}
+
+/**
+ * Create the field_api_token field on user entity.
+ */
+function _api_solutions_create_token_field()
+{
+    $field_name = 'field_api_token';
+    $entity_type = 'user';
+
+    // Check if storage exists.
+    if (!FieldStorageConfig::loadByName($entity_type, $field_name)) {
+        FieldStorageConfig::create([
+            'field_name' => $field_name,
+            'entity_type' => $entity_type,
+            'type' => 'string',
+            'cardinality' => 1,
+            'settings' => [
+                'max_length' => 255,
+            ],
+        ])->save();
+    }
+
+    // Check if instance exists.
+    if (!FieldConfig::loadByName($entity_type, 'user', $field_name)) {
+        FieldConfig::create([
+            'field_name' => $field_name,
+            'entity_type' => $entity_type,
+            'bundle' => 'user',
+            'label' => 'API Token',
+            'description' => 'Persistent token for API access.',
+            'required' => FALSE,
+            'settings' => [],
+        ])->save();
+    }
+}
+
+/**
+ * Generate tokens for all existing users.
+ */
+function _api_solutions_generate_tokens_for_all()
+{
+    $uids = \Drupal::entityQuery('user')
+        ->accessCheck(FALSE)
+        ->execute();
+
+    if (empty($uids)) {
+        return;
+    }
+
+    $users = User::loadMultiple($uids);
+    foreach ($users as $user) {
+        if ($user->hasField('field_api_token') && $user->get('field_api_token')->isEmpty()) {
+            $token = Crypt::hashBase64($user->getAccountName() . $user->getPassword());
+            $user->set('field_api_token', $token);
+            $user->save();
+        }
+    }
+}
+

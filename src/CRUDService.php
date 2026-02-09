@@ -105,12 +105,29 @@ class CRUDService extends CRUDBaseService
         return $entity_parent;
 
     }
+
     public function saveImgFile($entity_parent, $field_image, $field_value, $array = [])
     {
         $field_image_result = null;
-        $field_array = explode('/', $field_value);
-        $filename = end($field_array);
-        $data = file_get_contents($field_value);
+        $data = null;
+        $filename = null;
+
+        if (strpos($field_value, 'data:image/') === 0) {
+            // Support Base64
+            $parts = explode(',', $field_value);
+            if (count($parts) > 1) {
+                $header = $parts[0];
+                $data = base64_decode($parts[1]);
+                preg_match('/data:image\/(.*?);/', $header, $matches);
+                $ext = isset($matches[1]) ? $matches[1] : 'png';
+                $filename = 'base64_' . time() . '.' . $ext;
+            }
+        } else {
+            $field_array = explode('/', $field_value);
+            $filename = end($field_array);
+            $data = @file_get_contents($field_value);
+        }
+
         if ($data) {
             $setting = $entity_parent->get($field_image)->getSettings();
             $file_directory = ($setting['file_directory']);

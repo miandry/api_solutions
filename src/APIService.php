@@ -8,19 +8,22 @@ namespace Drupal\api_solutions;
  */
 class APIService
 {
-    public function isTokenValid($name, $token)
+    public function isTokenValid($token)
     {
-        $user = user_load_by_name($name);
-        if (!is_object($user)) {
+        $user = NULL;
+        $storage = \Drupal::entityTypeManager()->getStorage('user');
+
+        $users = $storage->loadByProperties(['field_api_token' => $token]);
+        $user = $users ? reset($users) : NULL;
+        if (!$user instanceof \Drupal\user\UserInterface || !$user->isActive()) {
             return false;
         }
-        $hashed_password = $user->getPassword();
-        $token_new = \Drupal\Component\Utility\Crypt::hashBase64($hashed_password);
-        return ($token_new == $token);
+        return true ;
     }
     public function isUserNameExist($name)
     {
         $query = \Drupal::entityQuery('user')
+            ->accessCheck(FALSE)
             ->condition('name', $name);
         $query->range(0, 1);
         $result = $query->execute();
@@ -34,9 +37,16 @@ class APIService
         if (!is_object($user)) {
             return false;
         }
-        $hashed_password = $user->getPassword();
-        $token_new = \Drupal\Component\Utility\Crypt::hashBase64($hashed_password);
-        return $token_new;
+        if ($user->hasField('field_api_token')) {
+            $token = $user->get('field_api_token')->value;
+            if (empty($token)) {
+                $token = \Drupal\Component\Utility\Crypt::hashBase64($user->getAccountName() . $user->getPassword());
+                $user->set('field_api_token', $token);
+                $user->save();
+            }
+            return $token;
+        }
+        return false;
     }
 
 }

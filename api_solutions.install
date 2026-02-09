@@ -1,0 +1,29 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the api_solutions module.
+ */
+
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\user\Entity\User;
+use Drupal\Component\Utility\Crypt;
+
+/**
+ * Implements hook_install().
+ */
+function api_solutions_install()
+{
+    _api_solutions_create_token_field();
+    _api_solutions_generate_tokens_for_all();
+}
+
+/**
+ * Ensure field_api_token exists and generate tokens for existing users.
+ */
+function api_solutions_update_10001()
+{
+    _api_solutions_create_token_field();
+    _api_solutions_generate_tokens_for_all();
+}

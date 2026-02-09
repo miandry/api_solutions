@@ -83,9 +83,8 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                 $service = \Drupal::service('api_solutions.api_crud');
 
                 $token = $this->getTokenFromHeader() ?: ($content["token"] ?? NULL);
-                $author = $content["author"] ?? ($content["name"] ?? NULL);
+                $is_valid = ($token) ? $service->isTokenValid($token) : false;
 
-                $is_valid = ($author && $token) ? $service->isTokenValid($author, $token) : false;
                 if ($is_valid) {
                     $entity_type = $content["entity_type"];
                     $bundle = $content["bundle"];
@@ -239,10 +238,10 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                 $data = json_decode($content, TRUE);
                 $service = \Drupal::service('api_solutions.api_crud');
 
-                $current_name = $data['name'] ?? NULL;
+                $current_name = $data['author'] ?? ($data['name'] ?? NULL);
                 $token = $this->getTokenFromHeader() ?: ($data['token'] ?? NULL);
 
-                if ($current_name && $token && $service->isTokenValid($current_name, $token)) {
+                if ($token && $service->isTokenValid($token)) {
                     $user = user_load_by_name($current_name);
                     if ($user) {
                         $updated = false;
@@ -300,7 +299,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
             $status = move_uploaded_file($fileItem['tmp_name'], $file_path . "/" . $fileItem['name']);
             if ($status) {
                 $name = basename($fileItem['name']);
-                $url = file_create_url($uri . "/" . $fileItem['name']);
+                $url = $uri . $fileItem['name'];
                 $fields = [
                     'name' => $name,
                     'field_media_image' => $url
@@ -465,13 +464,30 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
         $results = [];
         foreach ($jsons["rows"] as $id) {
             if (is_array($fields)) {
-                $results[] = \Drupal::service('entity_parser.manager')->loader_entity_by_type($id, $entitype, $fields);
+                $item = \Drupal::service('entity_parser.manager')->loader_entity_by_type($id, $entitype, $fields);
             } else {
-                $results[] = \Drupal::service('entity_parser.manager')->loader_entity_by_type($id, $entitype);
+                $item = \Drupal::service('entity_parser.manager')->loader_entity_by_type($id, $entitype);
             }
+
+            // Handle field remapping (changes)
+            if (is_array($changes)) {
+                foreach ($changes as $old_key => $new_key) {
+                    if (isset($item[$old_key])) {
+                        $item[$new_key] = $item[$old_key];
+                        unset($item[$old_key]);
+                    }
+                }
+            }
+
+            // Handle custom values injection
+            if (is_array($values)) {
+                foreach ($values as $f_key => $f_val) {
+                    $item[$f_key] = $f_val;
+                }
+            }
+
+            $results[] = $item;
         }
-        // TODO: implement values and changes mapping if really needed here, 
-        // keeping it simple for now as per base code.
         return new JsonResponse(["rows" => $results, "total" => $jsons["total"]]);
     }
 
