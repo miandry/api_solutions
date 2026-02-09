@@ -45,22 +45,31 @@ class CRUDService extends CRUDBaseService
     public function image($entity_parent, $field_name, $field_value)
     {
         $field_images = [];
-        if (is_string($field_value) && !is_numeric($field_value)) {
+        if (is_numeric($field_value)) {
+            $field_images[] = ['target_id' => $field_value];
+        } elseif (is_string($field_value)) {
             $field_images[] = $this->saveImgFile($entity_parent, $field_name, $field_value);
         } else {
             if (is_array($field_value)) {
                 foreach ($field_value as $image) {
-                    if (is_string($image) && !is_numeric($image)) {
+                    if (is_numeric($image)) {
+                        $field_images[] = ['target_id' => $image];
+                    } elseif (is_string($image)) {
                         $field_images[] = $this->saveImgFile($entity_parent, $field_name, $image);
-                    }
-                    if (is_array($image)) {
-                        //if type exist
-                        if (isset($image['uri'])) {
-                            $image_url = file_create_url($image['uri']);
+                    } elseif (is_array($image)) {
+                        if (isset($image['target_id'])) {
+                            $field_images[] = $image;
                         } else {
-                            $image_url = $image['url'];
+                            // if type exist
+                            if (isset($image['uri'])) {
+                                $image_url = file_create_url($image['uri']);
+                            } else {
+                                $image_url = $image['url'] ?? null;
+                            }
+                            if ($image_url) {
+                                $field_images[] = $this->saveImgFile($entity_parent, $field_name, $image_url, $image);
+                            }
                         }
-                        $field_images[] = $this->saveImgFile($entity_parent, $field_name, $image_url, $image);
                     }
                 }
             }

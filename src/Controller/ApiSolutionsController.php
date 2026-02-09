@@ -292,23 +292,62 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     public function uploader()
     {
         $json = ['status' => false];
-        $uri = 'public://';
-        $stream_wrapper_manager = \Drupal::service('stream_wrapper_manager')->getViaUri($uri);
-        $file_path = $stream_wrapper_manager->realpath();
+        $uri_root = 'public://media_api/';
+        $file_system = \Drupal::service('file_system');
+        $file_system->prepareDirectory($uri_root, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
+
         foreach ($_FILES as $fileItem) {
-            $status = move_uploaded_file($fileItem['tmp_name'], $file_path . "/" . $fileItem['name']);
-            if ($status) {
-                $name = basename($fileItem['name']);
-                $url = $uri . $fileItem['name'];
-                $fields = [
-                    'name' => $name,
-                    'field_media_image' => $url
-                ];
-                $image = \Drupal::service('api_solutions.crud')->save('media', 'image', $fields);
-                if (is_object($image)) {
-                    $json = ['id' => $image->id(), 'status' => true];
+            $data = file_get_contents($fileItem['tmp_name']);
+            if ($data) {
+                $filename = $fileItem['name'];
+                $uri = $uri_root . $filename;
+
+                // Save the file as a managed file in Drupal.
+                $file = file_save_data($data, $uri, \Drupal\Core\File\FileSystemInterface::EXISTS_RENAME);
+
+                if ($file) {
+                    $fields = [
+                        'name' => $filename,
+                        'field_media_image' => $file->id(), // Using the optimized numeric ID support
+                    ];
+
+                    $media = \Drupal::service('api_solutions.crud')->save('media', 'image', $fields);
+
+                    if (is_object($media)) {
+                        $style_urls = [];
+                        $styles = ['thumbnail', 'medium', 'large', 'media_api'];
+                        \Drupal::logger('api_solutions')->info('Starting image style generation for file: @file', ['@file' => $file->getFileUri()]);
+
+                        foreach ($styles as $style_name) {
+                            $style = \Drupal\image\Entity\ImageStyle::load($style_name);
+                            if ($style) {
+                                // Ensure the style is physically generated on the server.
+                                $destination = $style->buildUri($file->getFileUri());
+                                if (!file_exists($destination)) {
+                                    $style->createDerivative($file->getFileUri(), $destination);
+                                }
+
+                                // Produce absolute URL.
+                                $url = \Drupal::service('file_url_generator')->generateAbsoluteString($style->buildUrl($file->getFileUri()));
+                                $style_urls[$style_name] = $url;
+
+                                \Drupal::logger('api_solutions')->info('Style @style generated: @url', [
+                                    '@style' => $style_name,
+                                    '@url' => $url,
+                                ]);
+                            } else {
+                                \Drupal::logger('api_solutions')->warning('Style @style could not be loaded.', ['@style' => $style_name]);
+                            }
+                        }
+
+                        $json = [
+                            'id' => $media->id(),
+                            'status' => true,
+                            'url' => \Drupal::service('file_url_generator')->generateAbsoluteString($file->getFileUri()),
+                            'styles' => $style_urls,
+                        ];
+                    }
                 }
-                unlink($file_path . "/" . $fileItem['name']);
             }
         }
         return new JsonResponse($json);

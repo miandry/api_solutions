@@ -18,7 +18,7 @@ class APIService
         if (!$user instanceof \Drupal\user\UserInterface || !$user->isActive()) {
             return false;
         }
-        return true ;
+        return true;
     }
     public function isUserNameExist($name)
     {
