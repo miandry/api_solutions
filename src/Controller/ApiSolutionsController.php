@@ -291,64 +291,76 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
      */
     public function uploader()
     {
-        $json = ['status' => false];
-        $uri_root = 'public://media_api/';
-        $file_system = \Drupal::service('file_system');
-        $file_system->prepareDirectory($uri_root, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
+        $json = ['status' => false, 'message' => 'No file uploaded'];
+        try {
+            $uri_root = 'public://media_api/';
+            $file_system = \Drupal::service('file_system');
+            $file_system->prepareDirectory($uri_root, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
 
-        foreach ($_FILES as $fileItem) {
-            $data = file_get_contents($fileItem['tmp_name']);
-            if ($data) {
-                $filename = $fileItem['name'];
-                $uri = $uri_root . $filename;
+            if (empty($_FILES)) {
+                return new JsonResponse($json);
+            }
 
-                // Save the file as a managed file in Drupal.
-                $file = file_save_data($data, $uri, \Drupal\Core\File\FileSystemInterface::EXISTS_RENAME);
+            foreach ($_FILES as $fileItem) {
+                if ($fileItem['error'] !== UPLOAD_ERR_OK) {
+                    throw new \Exception('PHP Upload Error: ' . $fileItem['error']);
+                }
 
-                if ($file) {
-                    $fields = [
-                        'name' => $filename,
-                        'field_media_image' => $file->id(), // Using the optimized numeric ID support
-                    ];
+                $data = file_get_contents($fileItem['tmp_name']);
+                if ($data) {
+                    $filename = $fileItem['name'];
+                    // Clean filename to avoid issues with special characters
+                    $uri = $uri_root . $filename;
 
-                    $media = \Drupal::service('api_solutions.crud')->save('media', 'image', $fields);
+                    // Save the file as a managed file in Drupal.
+                    $file = file_save_data($data, $uri, \Drupal\Core\File\FileSystemInterface::EXISTS_RENAME);
 
-                    if (is_object($media)) {
-                        $style_urls = [];
-                        $styles = ['thumbnail', 'medium', 'large', 'media_api'];
-                        \Drupal::logger('api_solutions')->info('Starting image style generation for file: @file', ['@file' => $file->getFileUri()]);
-
-                        foreach ($styles as $style_name) {
-                            $style = \Drupal\image\Entity\ImageStyle::load($style_name);
-                            if ($style) {
-                                // Ensure the style is physically generated on the server.
-                                $destination = $style->buildUri($file->getFileUri());
-                                if (!file_exists($destination)) {
-                                    $style->createDerivative($file->getFileUri(), $destination);
-                                }
-
-                                // Produce absolute URL.
-                                $url = \Drupal::service('file_url_generator')->generateAbsoluteString($style->buildUrl($file->getFileUri()));
-                                $style_urls[$style_name] = $url;
-
-                                \Drupal::logger('api_solutions')->info('Style @style generated: @url', [
-                                    '@style' => $style_name,
-                                    '@url' => $url,
-                                ]);
-                            } else {
-                                \Drupal::logger('api_solutions')->warning('Style @style could not be loaded.', ['@style' => $style_name]);
-                            }
-                        }
-
+                    if ($file) {
                         $json = [
-                            'id' => $media->id(),
+                            'fid' => $file->id(),
                             'status' => true,
                             'url' => \Drupal::service('file_url_generator')->generateAbsoluteString($file->getFileUri()),
-                            'styles' => $style_urls,
                         ];
+
+                        // Attempt to create Media entity but don't fail if it doesn't work
+                        try {
+                            $fields = [
+                                'name' => $filename,
+                                'field_media_image' => $file->id(),
+                            ];
+                            $media = \Drupal::service('api_solutions.crud')->save('media', 'image', $fields);
+                            if (is_object($media)) {
+                                $json['id'] = $media->id();
+
+                                // Generate styles
+                                $style_urls = [];
+                                $styles = ['thumbnail', 'medium', 'large']; // Removed 'media_api' to be safer
+                                foreach ($styles as $style_name) {
+                                    $style = \Drupal\image\Entity\ImageStyle::load($style_name);
+                                    if ($style) {
+                                        $destination = $style->buildUri($file->getFileUri());
+                                        if (!file_exists($destination)) {
+                                            $style->createDerivative($file->getFileUri(), $destination);
+                                        }
+                                        $url = \Drupal::service('file_url_generator')->generateAbsoluteString($style->buildUrl($file->getFileUri()));
+                                        $style_urls[$style_name] = $url;
+                                    }
+                                }
+                                $json['styles'] = $style_urls;
+                            }
+                        } catch (\Exception $mediaEx) {
+                            \Drupal::logger('api_solutions')->warning('Media entity creation failed but file saved: @msg', ['@msg' => $mediaEx->getMessage()]);
+                        }
+                    } else {
+                        throw new \Exception('Failed to save file data to ' . $uri);
                     }
+                } else {
+                    throw new \Exception('Failed to read uploaded file contents.');
                 }
             }
+        } catch (\Exception $e) {
+            \Drupal::logger('api_solutions')->error('Uploader exception: @msg', ['@msg' => $e->getMessage()]);
+            $json = ['status' => false, 'message' => $e->getMessage()];
         }
         return new JsonResponse($json);
     }
