@@ -59,12 +59,28 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
      */
     protected function getTokenFromHeader()
     {
-        $headers = \Drupal::request()->headers->all();
-        $auth_header = \Drupal::request()->headers->get('Authorization');
-        if ($auth_header && preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
-            return $matches[1];
+        $request = \Drupal::request();
+        $auth_header = $request->headers->get('Authorization');
+
+        // Alternative for some servers where Authorization header is stripped
+        if (!$auth_header && function_exists('apache_request_headers')) {
+            $all_headers = apache_request_headers();
+            if (isset($all_headers['Authorization'])) {
+                $auth_header = $all_headers['Authorization'];
+            }
         }
-        return NULL;
+
+        // Check $_SERVER directly as a last resort
+        if (!$auth_header && isset($_SERVER['HTTP_AUTHORIZATION'])) {
+            $auth_header = $_SERVER['HTTP_AUTHORIZATION'];
+        }
+
+        if ($auth_header && preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
+            return trim($matches[1]);
+        }
+
+        // Fallback to token query parameter for convenience
+        return $request->query->get('token');
     }
 
     /**

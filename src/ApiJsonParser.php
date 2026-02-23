@@ -253,15 +253,17 @@ class ApiJsonParser extends EntityParser
                     foreach ($value as $key_included => $value_included) {
                         if (isset($term[$value_included]['#object'])) {
                             $term1[$value_included] = $this->parser($term[$value_included]['#object'], [], $options);
-                        } else {
+                        } elseif (isset($term[$value_included]) && is_array($term[$value_included])) {
                             foreach ($term[$value_included] as $multiple_included) {
                                 $term1[$value_included][] = $this->parser($multiple_included['#object'], [], $options);
                             }
                         }
+                        if (isset($term1[$value_included])) {
+                            $term[$value_included] = $term1[$value_included];
+                        }
                     }
                 }
             }
-            $term[$value_included] = $term1[$value_included];
 
         }
         return $term;

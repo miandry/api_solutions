@@ -10,15 +10,16 @@ class APIService
 {
     public function isTokenValid($token)
     {
-        $user = NULL;
-        $storage = \Drupal::entityTypeManager()->getStorage('user');
-
-        $users = $storage->loadByProperties(['field_api_token' => $token]);
-        $user = $users ? reset($users) : NULL;
-        if (!$user instanceof \Drupal\user\UserInterface || !$user->isActive()) {
-            return false;
+        return (bool) $this->getUserByToken($token);
+    }
+    public function getUserByToken($token)
+    {
+        if (empty($token)) {
+            return NULL;
         }
-        return true;
+        $storage = \Drupal::entityTypeManager()->getStorage('user');
+        $users = $storage->loadByProperties(['field_api_token' => $token]);
+        return $users ? reset($users) : NULL;
     }
     public function isUserNameExist($name)
     {
