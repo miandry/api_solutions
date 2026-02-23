@@ -51,12 +51,15 @@ class CRUDBaseService implements CRUDInterface
             }
 
 
+            $changed_fields = [];
             foreach ($fields as $key => $field) {
                 if ($entity_new && $entity_new->hasField($key)) {
                     $status = true;
                     $field_type = $entity_new->get($key)->getFieldDefinition()->getType();
                     $setting_field = $entity_new->get($key)->getFieldDefinition()->getSettings();
 
+                    // Track changes for existing entities
+                    $old_value = !$is_new ? $entity_new->get($key)->getValue() : null;
 
                     ///hook by type
                     if ($setting_field && isset($setting_field['target_type'])) {
@@ -85,12 +88,36 @@ class CRUDBaseService implements CRUDInterface
                         $this->item_default($entity_new, $key, $field);
                     }
 
+                    // Check if value changed
+                    if (!$is_new) {
+                        $new_value = $entity_new->get($key)->getValue();
+                        if (json_encode($old_value) !== json_encode($new_value)) {
+                            $changed_fields[] = $key;
+                        }
+                    }
+
                 }
 
             }
 
 
         }
+
+        // Enable revisions if supported
+        if ($entity_new instanceof \Drupal\Core\Entity\RevisionableInterface) {
+            $entity_new->setNewRevision(TRUE);
+
+            if ($entity_new instanceof \Drupal\Core\Entity\RevisionLogInterface) {
+                $log_msg = 'API Update: ' . ($is_new ? 'Created' : 'Updated') . ' via api_solutions.';
+                if (!$is_new && !empty($changed_fields)) {
+                    $log_msg .= ' Changed fields: ' . implode(', ', $changed_fields);
+                }
+                $entity_new->setRevisionLogMessage($log_msg);
+                $entity_new->setRevisionCreationTime(\Drupal::time()->getRequestTime());
+                $entity_new->setRevisionUserId(\Drupal::currentUser()->id());
+            }
+        }
+
         $status = $entity_new->save();
 
         if ($status) {
