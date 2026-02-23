@@ -56,7 +56,7 @@ class ApiJsonParser extends EntityParser
     }
     public function isUserNameExist($name)
     {
-        $query = \Drupal::entityQuery('user')
+        $query = \Drupal::entityQuery('user')->accessCheck(FALSE)
             ->condition('name', $name);
         $query->range(0, 1);
         $result = $query->execute();
@@ -313,8 +313,8 @@ class ApiJsonParser extends EntityParser
     }
     public function listQueryExecute($entitype, $bundle)
     {
-        $queryMain = \Drupal::entityQuery($entitype);
-        $queryTotal = \Drupal::entityQuery($entitype);
+        $queryMain = \Drupal::entityQuery($entitype)->accessCheck(FALSE);
+        $queryTotal = \Drupal::entityQuery($entitype)->accessCheck(FALSE);
 
 
         $pager = \Drupal::request()->get('pager');
