@@ -1,0 +1,3 @@
+allowed_origins:
+  - 'http://eroso.local:8888'
+  - 'https://eroso-madagascar.com'

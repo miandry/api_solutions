@@ -13,6 +13,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Drupal\user\Entity\User;
 use Drupal\Core\Cache\CacheableJsonResponse;
 use Drupal\Core\Cache\CacheableMetadata;
+use Symfony\Component\HttpFoundation\Cookie;
 
 /**
  * Class ApiSolutionsController.
@@ -55,6 +56,49 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     }
 
     /**
+     * Check if the request origin is allowed and return CORS headers.
+     *
+     * @return array|null CORS headers array if allowed, or null if blocked.
+     */
+    protected function getCorsHeaders()
+    {
+        $request = \Drupal::request();
+        $origin = $request->headers->get('Origin');
+
+        if (!$origin) {
+            // No Origin header = same-origin request, allow it
+            return [];
+        }
+
+        $config = \Drupal::config('api_solutions.settings');
+        $allowed = $config->get('allowed_origins') ?: [];
+
+        if (in_array($origin, $allowed, true)) {
+            return [
+                'Access-Control-Allow-Origin' => $origin,
+                'Access-Control-Allow-Credentials' => 'true',
+                'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
+                'Vary' => 'Origin',
+            ];
+        }
+
+        // Origin not allowed
+        return null;
+    }
+
+    /**
+     * Return a 403 response for blocked origins.
+     */
+    protected function blockedOriginResponse()
+    {
+        return new JsonResponse([
+            'status' => 'error',
+            'message' => 'Origin not allowed',
+        ], 403);
+    }
+
+    /**
      * Helper to get token from Authorization header.
      */
     protected function getTokenFromHeader()
@@ -84,7 +128,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     }
 
     /**
-     * Save endpoint logic.
+     * Save endpoint logic with cookie-based auth (fallback to header/body token).
      */
     public function save()
     {
@@ -92,27 +136,62 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
         $method = \Drupal::request()->getMethod();
         $id = null;
         $message = "Request failed";
+
         if ($method == "POST") {
+            // 1. Try cookie first, then Authorization header, then body token
+            $token = \Drupal::request()->cookies->get('auth_token');
+       
+            if (!$token) {
+                $token = $this->getTokenFromHeader();
+            }
+             
+
             $content = \Drupal::request()->getContent();
             if (!empty($content)) {
                 $content = json_decode($content, TRUE);
+
+                if (!$token) {
+                    $token = $content["token"] ?? NULL;
+                }
+                        
                 $service = \Drupal::service('api_solutions.api_crud');
+                $user = ($token) ? $service->validateBearerToken($token) : null;
+                if ($user) {
+                    $entity_type = $content["entity_type"] ?? '';
+                    $bundle = $content["bundle"] ?? '';
 
-                $token = $this->getTokenFromHeader() ?: ($content["token"] ?? NULL);
-                $is_valid = ($token) ? $service->isTokenValid($token) : false;
+                    // Check role permission before saving
+                    $permission_error = $this->checkSavePermission($user, $entity_type, $bundle, $content);
+                    if ($permission_error) {
+                        return new JsonResponse([
+                            'message' => $permission_error,
+                            'status' => 'error'
+                        ], 403);
+                    }
 
-                if ($is_valid) {
-                    $entity_type = $content["entity_type"];
-                    $bundle = $content["bundle"];
+                    // Auto-set uid from authenticated user for nodes
+                    if ($entity_type == 'node' && !isset($content['uid'])) {
+                        $content['uid'] = $user->id();
+                    }
+
                     unset($content["bundle"]);
                     unset($content["entity_type"]);
                     unset($content["token"]);
+                    unset($content["author"]);
+
                     $elemt = \Drupal::service('api_solutions.crud')->save($entity_type, $bundle, $content);
                     if (is_object($elemt)) {
                         $id = $elemt->id();
+                    } else {
+                        $message = "Erreur lors de la sauvegarde";
                     }
                 } else {
-                    $message = "Author token is not valid or missing";
+                    $message = "Token invalide ou session expiree";
+                    $response = new JsonResponse(['message' => $message, 'status' => 'error'], 401);
+                    if (\Drupal::request()->cookies->get('auth_token')) {
+                        $response->headers->clearCookie('auth_token', '/');
+                    }
+                    return $response;
                 }
             } else {
                 $message = "Data not found";
@@ -120,6 +199,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
         } else {
             $message = "No POST request";
         }
+
         $json = ($id) ? ['item' => $id, 'status' => true] : ['message' => $message, 'status' => 'error'];
         return new JsonResponse($json);
     }
@@ -165,80 +245,151 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     }
 
     /**
-     * Register logic.
+     * Register logic with HTTP-Only cookie.
      */
     public function register()
     {
         $service = \Drupal::service('api_solutions.api_crud');
         $method = \Drupal::request()->getMethod();
-        $json['status'] = false;
+
         if ($method == "POST") {
             $content = \Drupal::request()->getContent();
             if (!empty($content)) {
                 $data = json_decode($content, TRUE);
                 $password = $data['pass'] ?? ($data['password'] ?? NULL);
-                if ($data['name'] && $password) {
-                    $status = $service->isUserNameExist($data['name']);
-                    if ($status) {
-                        $json['name'] = $data['name'];
-                        $json['error'] = 'Username exist deja';
-                    } else {
-                        $json['name'] = $data['name'];
-                        $user = User::create();
-                        $user->setPassword($password);
-                        $user->enforceIsNew();
-                        $user->setEmail($data['mail'] ?? "email@yahoo.fr");
-                        $user->set('status', 1);
-                        $user->setUsername($data['name']);
-                        if (isset($data['role'])) {
-                            $user->addRole($data['role']);
-                        }
-                        $json['status'] = (bool) $user->save();
-                        $json['token'] = $service->generateToken($user);
-                        $json['id'] = $user->id();
-                    }
+
+                if (empty($data['name']) || empty($password)) {
+                    return new JsonResponse(['status' => false, 'message' => 'Nom et mot de passe requis'], 400);
+                }
+
+                if ($service->isUserNameExist($data['name'])) {
+                    return new JsonResponse([
+                        'status' => false,
+                        'name' => $data['name'],
+                        'error' => 'Nom d\'utilisateur existe deja'
+                    ], 400);
+                }
+
+                $user = User::create();
+                $user->setPassword($password);
+                $user->enforceIsNew();
+                $user->setEmail($data['mail'] ?? "email@yahoo.fr");
+                $user->set('status', 1);
+                $user->setUsername($data['name']);
+                if (isset($data['role'])) {
+                    $user->addRole($data['role']);
+                }
+
+                $saved = $user->save();
+
+                if ($saved) {
+                    $token = $service->generateBearerToken($user);
+
+                    $response = new JsonResponse([
+                        'status' => true,
+                        'message' => 'Inscription r' . "\xC3\xA9" . 'ussie',
+                        'token' => $token,
+                        'id' => $user->id(),
+                        'name' => $user->getAccountName(),
+                        'mail' => $user->getEmail(),
+                    ]);
+
+                    $cookie = new Cookie(
+                        'auth_token',
+                        $token,
+                        time() + (30 * 24 * 3600),
+                        '/',
+                        null,
+                        false,
+                        true,
+                        false,
+                        'Lax'
+                    );
+                    $response->headers->setCookie($cookie);
+
+                    return $response;
+                } else {
+                    return new JsonResponse(['status' => false, 'message' => 'Erreur lors de la cr' . "\xC3\xA9" . 'ation'], 500);
                 }
             }
         }
-        return new JsonResponse($json);
+
+        return new JsonResponse(['status' => false, 'message' => 'POST requis'], 405);
     }
 
     /**
-     * Login logic.
+     * Login logic with HTTP-Only cookie.
      */
     public function login()
     {
         $method = \Drupal::request()->getMethod();
-        $json['status'] = false;
+
         if ($method == "POST") {
             $content = \Drupal::request()->getContent();
             if (!empty($content)) {
                 $data = json_decode($content, TRUE);
-                $json['name'] = $data['name'];
+
+                if (empty($data['name'])) {
+                    return new JsonResponse(['status' => false, 'message' => 'Nom d\'utilisateur requis'], 400);
+                }
+
+                $password = $data['pass'] ?? ($data['password'] ?? NULL);
+                if (empty($password)) {
+                    return new JsonResponse(['status' => false, 'message' => 'Mot de passe requis'], 400);
+                }
+
                 $user = user_load_by_name($data['name']);
-                if (is_object($user)) {
-                    $user_array = \Drupal::service('entity_parser.manager')->user_parser($user);
+                if (is_object($user) && $user->isActive()) {
                     $password_hasher = \Drupal::service('password');
-                    $password = $data['pass'] ?? ($data['password'] ?? NULL);
-                    $json['mail'] = $user_array['mail'];
-                    $service = \Drupal::service('api_solutions.api_crud');
-                    $json['token'] = $service->generateToken($user);
-                    $json['status'] = ($password_hasher->check($password, $user->getPassword()));
-                    if ($json['status']) {
-                        $json['id'] = $user->id();
-                        $json['data'] = $user_array;
+
+                    if ($password_hasher->check($password, $user->getPassword())) {
+                        $service = \Drupal::service('api_solutions.api_crud');
+                        $token = $service->generateBearerToken($user);
+                        $user_array = \Drupal::service('entity_parser.manager')->user_parser($user);
+
+                        $response = new JsonResponse([
+                            'status' => true,
+                            'message' => 'Connexion r' . "\xC3\xA9" . 'ussie',
+                            'token' => $token,
+                            'id' => $user->id(),
+                            'name' => $user->getAccountName(),
+                            'mail' => $user->getEmail(),
+                            'roles' => $user->getRoles(),
+                            'data' => $user_array,
+                        ]);
+
+                        $cookie = new Cookie(
+                            'auth_token',
+                            $token,
+                            time() + (30 * 24 * 3600),
+                            '/',
+                            null,
+                            false,
+                            true,
+                            false,
+                            'Lax'
+                        );
+                        $response->headers->setCookie($cookie);
+
+                        return $response;
                     } else {
-                        $json = [
-                            'mail' => $user_array['mail'],
-                            'name' => $data['name'],
+                        return new JsonResponse([
                             'status' => false,
-                            'error' => "Failed Authentification"
-                        ];
+                            'name' => $data['name'],
+                            'error' => 'Mot de passe incorrect'
+                        ], 401);
                     }
+                } else {
+                    return new JsonResponse([
+                        'status' => false,
+                        'name' => $data['name'],
+                        'error' => 'Utilisateur non trouv' . "\xC3\xA9" . ' ou inactif'
+                    ], 404);
                 }
             }
         }
-        return new JsonResponse($json);
+
+        return new JsonResponse(['status' => false, 'message' => 'POST requis'], 405);
     }
 
     /**
@@ -587,6 +738,130 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
         $response = new CacheableJsonResponse($data);
         $response->addCacheableDependency(CacheableMetadata::createFromRenderArray($build));
         return $response;
+    }
+
+    /**
+     * Logout - invalidate token and remove HTTP-Only cookie.
+     */
+    public function logout()
+    {
+        $token = \Drupal::request()->cookies->get('auth_token');
+
+        if ($token) {
+            $service = \Drupal::service('api_solutions.api_crud');
+            $service->invalidateBearerToken($token);
+        }
+
+        $response = new JsonResponse([
+            'status' => true,
+            'message' => 'Deconnexion reussie'
+        ]);
+
+        $response->headers->clearCookie('auth_token', '/');
+
+        return $response;
+    }
+
+    /**
+     * Check if user is authenticated via cookie.
+     */
+    public function checkAuth()
+    {
+        $token = \Drupal::request()->cookies->get('auth_token');
+
+        if (!$token) {
+            $token = $this->getTokenFromHeader();
+        }
+
+        if (!$token) {
+            return new JsonResponse([
+                'authenticated' => false,
+                'message' => 'Non authentifie'
+            ], 401);
+        }
+
+        $service = \Drupal::service('api_solutions.api_crud');
+        $user = $service->validateBearerToken($token);
+
+        if ($user) {
+            $user_array = \Drupal::service('entity_parser.manager')->user_parser($user);
+            return new JsonResponse([
+                'authenticated' => true,
+                'user' => [
+                    'id' => $user->id(),
+                    'name' => $user->getAccountName(),
+                    'mail' => $user->getEmail(),
+                    'roles' => $user->getRoles(),
+                    'data' => $user_array,
+                ]
+            ]);
+        } else {
+            $response = new JsonResponse([
+                'authenticated' => false,
+                'message' => 'Session expiree'
+            ], 401);
+            $response->headers->clearCookie('auth_token', '/');
+            return $response;
+        }
+    }
+
+    /**
+     * Check if user has permission to save for the given entity_type/bundle.
+     *
+     * @param \Drupal\user\Entity\User $user
+     * @param string $entity_type
+     * @param string $bundle
+     * @param array $content
+     * @return string|null Error message if denied, null if allowed.
+     */
+    protected function checkSavePermission($user, $entity_type, $bundle, $content)
+    {
+        // Administrators bypass all permission checks
+        if (in_array('administrator', $user->getRoles())) {
+            return null;
+        }
+
+        $id_key = \Drupal::entityTypeManager()->getDefinition($entity_type)->getKey('id');
+        $is_update = isset($content[$id_key]) && is_numeric($content[$id_key]);
+
+        if ($entity_type == 'node') {
+            if ($is_update) {
+                // Check edit permissions
+                $has_edit_any = $user->hasPermission("edit any {$bundle} content");
+                $has_edit_own = $user->hasPermission("edit own {$bundle} content");
+                if (!$has_edit_any && !$has_edit_own) {
+                    return "Vous n'avez pas la permission de modifier ce contenu ({$bundle})";
+                }
+                // If only edit own, verify ownership
+                if (!$has_edit_any && $has_edit_own) {
+                    $node = \Drupal::entityTypeManager()->getStorage('node')->load($content[$id_key]);
+                    if ($node && $node->getOwnerId() != $user->id()) {
+                        return "Vous ne pouvez modifier que vos propres contenus ({$bundle})";
+                    }
+                }
+            } else {
+                if (!$user->hasPermission("create {$bundle} content")) {
+                    return "Vous n'avez pas la permission de creer ce contenu ({$bundle})";
+                }
+            }
+        } elseif ($entity_type == 'taxonomy_term') {
+            if ($is_update) {
+                if (!$user->hasPermission("edit terms in {$bundle}")) {
+                    return "Vous n'avez pas la permission de modifier les termes ({$bundle})";
+                }
+            } else {
+                if (!$user->hasPermission("create terms in {$bundle}")) {
+                    return "Vous n'avez pas la permission de creer des termes ({$bundle})";
+                }
+            }
+        } elseif ($entity_type == 'comment') {
+            if (!$user->hasPermission('post comments')) {
+                return "Vous n'avez pas la permission de poster des commentaires";
+            }
+        }
+
+        // Other entity types: allow any authenticated user
+        return null;
     }
 
     /**

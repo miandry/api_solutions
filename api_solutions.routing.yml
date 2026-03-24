@@ -1,3 +1,12 @@
+# Admin Settings
+api_solutions.settings:
+  path: '/admin/config/services/api-solutions'
+  defaults:
+    _form: '\Drupal\api_solutions\Form\ApiSolutionsSettingsForm'
+    _title: 'API Solutions Settings'
+  requirements:
+    _permission: 'administer site configuration'
+
 # General API Routes
 api_solutions.generate_token:
   path: '/api_solutions/generate/token'
@@ -39,6 +48,28 @@ api_solutions.user.edit:
     _title: 'User Edit'
   requirements:
     _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+api_solutions.user.logout:
+  path: '/api_solutions/user/logout'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::logout'
+    _title: 'User Logout'
+  methods: [POST]
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+  options:
+    no_cache: TRUE
+
+api_solutions.user.check_auth:
+  path: '/api_solutions/user/check-auth'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::checkAuth'
+    _title: 'Check Authentication'
+  methods: [GET]
+  requirements:
+    _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+  options:
+    no_cache: TRUE
 
 api_solutions.user.forgot_password:
   path: '/api_solutions/user/forgot-password'
