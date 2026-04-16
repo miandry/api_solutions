@@ -295,8 +295,14 @@ class ApiJsonParser extends EntityParser
         $query = $entityQuery->condition($key_bundle, $bundle);
         if ($filters) {
             foreach ($filters as $key => $filter) {
-                if (isset($filter['op']) && $filter['op'] != null) {
-                    $query->condition($key, $filter['val'], $filter['op']);
+                if (isset($filter['op']) && $filter['op'] !== '' && $filter['op'] !== null) {
+                    // Entity query only understands SQL-style ops (=, <>, CONTAINS…), not EQ.
+                    $op = trim((string) $filter['op']);
+                    $op_upper = strtoupper($op);
+                    if ($op_upper === 'EQ' || $op === '==' || $op_upper === 'EQUAL') {
+                        $op = '=';
+                    }
+                    $query->condition($key, $filter['val'], $op);
                 } else {
                     if (is_array($filter['val'])) {
                         $query->condition($key, $filter['val'], 'IN');

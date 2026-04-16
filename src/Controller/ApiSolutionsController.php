@@ -844,6 +844,14 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                     return "Vous n'avez pas la permission de creer ce contenu ({$bundle})";
                 }
             }
+
+            // order_commande: « annuler » réservé aux administrateurs (bypass plus haut).
+            if ($bundle === 'order_commande' && isset($content['field_status_commande'])) {
+                $new_status = trim((string) $content['field_status_commande']);
+                if ($new_status === 'annuler') {
+                    return "Seuls les administrateurs peuvent annuler une commande.";
+                }
+            }
         } elseif ($entity_type == 'taxonomy_term') {
             if ($is_update) {
                 if (!$user->hasPermission("edit terms in {$bundle}")) {
