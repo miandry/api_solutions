@@ -135,3 +135,12 @@ api_solutions.api.v2.users:
     _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiUserList'
   requirements:
     _custom_access: '\Drupal\api_solutions\Controller\ApiSolutionsController::apiJsonAccess'
+
+# Vue SPA page: list card_transaction
+api_solutions.list_card:
+  path: '/list_card'
+  defaults:
+    _controller: '\Drupal\api_solutions\Controller\ApiSolutionsController::listCardPage'
+    _title: 'Liste des transactions'
+  requirements:
+    _permission: 'access content'

@@ -128,6 +128,19 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
     }
 
     /**
+     * Page shell for the Vue list of card_transaction nodes.
+     */
+    public function listCardPage()
+    {
+        return [
+            '#markup' => '',
+            '#cache' => [
+                'contexts' => ['user', 'url'],
+            ],
+        ];
+    }
+
+    /**
      * Save endpoint logic with cookie-based auth (fallback to header/body token).
      */
     public function save()
@@ -156,6 +169,15 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                         
                 $service = \Drupal::service('api_solutions.api_crud');
                 $user = ($token) ? $service->validateBearerToken($token) : null;
+
+                // Fallback: authenticated Drupal session (admin Vue app / same-origin).
+                if (!$user) {
+                    $account = \Drupal::currentUser();
+                    if ($account->isAuthenticated()) {
+                        $user = User::load($account->id());
+                    }
+                }
+
                 if ($user) {
                     $entity_type = $content["entity_type"] ?? '';
                     $bundle = $content["bundle"] ?? '';
@@ -697,10 +719,16 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                 }
             }
 
-            // Handle custom values injection
+            // values[field][] = nested fields to load on entity references,
+            // or a scalar/map to inject a constant value.
             if (is_array($values)) {
                 foreach ($values as $f_key => $f_val) {
-                    $item[$f_key] = $f_val;
+                    if (is_array($f_val) && $this->isListOfFieldNames($f_val) && isset($item[$f_key])) {
+                        $item[$f_key] = $this->expandReferenceFields($item[$f_key], $entitype, $f_val);
+                    }
+                    elseif (!is_array($f_val) || !$this->isListOfFieldNames($f_val)) {
+                        $item[$f_key] = $f_val;
+                    }
                 }
             }
 
@@ -870,6 +898,63 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
 
         // Other entity types: allow any authenticated user
         return null;
+    }
+
+    /**
+     * Whether $value is a list of field machine names (e.g. ['nid','title']).
+     */
+    protected function isListOfFieldNames($value)
+    {
+        if (!is_array($value) || $value === []) {
+            return FALSE;
+        }
+        // Associative map = constant injection, not field names.
+        if (array_keys($value) !== range(0, count($value) - 1)) {
+            return FALSE;
+        }
+        foreach ($value as $entry) {
+            if (!is_string($entry) || $entry === '') {
+                return FALSE;
+            }
+        }
+        return TRUE;
+    }
+
+    /**
+     * Re-load entity reference payload(s) with the requested nested fields.
+     */
+    protected function expandReferenceFields($refs, $entity_type, array $fields)
+    {
+        if ($refs === NULL || $refs === '' || $refs === []) {
+            return $refs;
+        }
+
+        // Single reference object: { nid, title, ... }
+        if (is_array($refs) && isset($refs['nid'])) {
+            return \Drupal::service('entity_parser.manager')
+                ->loader_entity_by_type($refs['nid'], $entity_type, $fields);
+        }
+
+        // Multiple references.
+        if (is_array($refs)) {
+            $parsed = [];
+            foreach ($refs as $ref) {
+                $nid = is_array($ref) ? ($ref['nid'] ?? NULL) : $ref;
+                if ($nid) {
+                    $parsed[] = \Drupal::service('entity_parser.manager')
+                        ->loader_entity_by_type($nid, $entity_type, $fields);
+                }
+            }
+            return $parsed;
+        }
+
+        // Numeric target id.
+        if (is_numeric($refs)) {
+            return \Drupal::service('entity_parser.manager')
+                ->loader_entity_by_type($refs, $entity_type, $fields);
+        }
+
+        return $refs;
     }
 
     /**
