@@ -256,16 +256,28 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
             $content = \Drupal::request()->getContent();
             if (!empty($content)) {
                 $data = json_decode($content, TRUE);
-                $password = $data['pass'] ?? ($data['password'] ?? NULL);
-
-                if (empty($data['name']) || empty($password)) {
-                    return new JsonResponse(['status' => false, 'message' => 'Nom et mot de passe requis'], 400);
+                if (!is_array($data)) {
+                    return new JsonResponse(['status' => false, 'message' => 'Données d’inscription invalides'], 400);
                 }
 
-                if ($service->isUserNameExist($data['name'])) {
+                $name = $data['name'] ?? ($data['username'] ?? '');
+                $password = $data['pass'] ?? ($data['password'] ?? NULL);
+
+                if (!is_string($name) || mb_strlen($name, 'UTF-8') < 5 || preg_match('/\s/u', $name) !== 0) {
                     return new JsonResponse([
                         'status' => false,
-                        'name' => $data['name'],
+                        'message' => 'Le nom d’utilisateur doit contenir au moins 5 caractères et aucun espace',
+                    ], 400);
+                }
+
+                if (!is_string($password) || $password === '') {
+                    return new JsonResponse(['status' => false, 'message' => 'Mot de passe requis'], 400);
+                }
+
+                if ($service->isUserNameExist($name)) {
+                    return new JsonResponse([
+                        'status' => false,
+                        'name' => $name,
                         'error' => 'Nom d\'utilisateur existe deja'
                     ], 400);
                 }
@@ -273,12 +285,11 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                 $user = User::create();
                 $user->setPassword($password);
                 $user->enforceIsNew();
-                $user->setEmail($data['mail'] ?? "email@yahoo.fr");
+                $email = $name . \Drupal::service('uuid')->generate() . '@gmail.com';
+                $user->setEmail($email);
                 $user->set('status', 1);
-                $user->setUsername($data['name']);
-                if (isset($data['role'])) {
-                    $user->addRole($data['role']);
-                }
+                $user->setUsername($name);
+                $user->set('roles', []);
 
                 $saved = $user->save();
 
