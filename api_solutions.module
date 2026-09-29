@@ -76,6 +76,38 @@ function _api_solutions_create_token_field()
 }
 
 /**
+ * Create the required phone field on user entities.
+ */
+function _api_solutions_create_phone_field()
+{
+    $field_name = 'field_phone';
+    $entity_type = 'user';
+
+    if (!FieldStorageConfig::loadByName($entity_type, $field_name)) {
+        FieldStorageConfig::create([
+            'field_name' => $field_name,
+            'entity_type' => $entity_type,
+            'type' => 'string',
+            'cardinality' => 1,
+            'settings' => [
+                'max_length' => 55,
+            ],
+        ])->save();
+    }
+
+    if (!FieldConfig::loadByName($entity_type, 'user', $field_name)) {
+        FieldConfig::create([
+            'field_name' => $field_name,
+            'entity_type' => $entity_type,
+            'bundle' => 'user',
+            'label' => 'Numéro de téléphone',
+            'required' => TRUE,
+            'settings' => [],
+        ])->save();
+    }
+}
+
+/**
  * Generate tokens for all existing users.
  */
 function _api_solutions_generate_tokens_for_all()

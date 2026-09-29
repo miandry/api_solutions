@@ -16,6 +16,7 @@ use Drupal\Component\Utility\Crypt;
 function api_solutions_install()
 {
     _api_solutions_create_token_field();
+    _api_solutions_create_phone_field();
     _api_solutions_generate_tokens_for_all();
 }
 
@@ -26,4 +27,12 @@ function api_solutions_update_10001()
 {
     _api_solutions_create_token_field();
     _api_solutions_generate_tokens_for_all();
+}
+
+/**
+ * Add the required phone field to user accounts.
+ */
+function api_solutions_update_10002()
+{
+    _api_solutions_create_phone_field();
 }

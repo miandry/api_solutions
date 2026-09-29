@@ -262,6 +262,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
 
                 $name = $data['name'] ?? ($data['username'] ?? '');
                 $password = $data['pass'] ?? ($data['password'] ?? NULL);
+                $phone = $data['phone'] ?? NULL;
 
                 if (!is_string($name) || mb_strlen($name, 'UTF-8') < 5 || preg_match('/\s/u', $name) !== 0) {
                     return new JsonResponse([
@@ -272,6 +273,10 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
 
                 if (!is_string($password) || $password === '') {
                     return new JsonResponse(['status' => false, 'message' => 'Mot de passe requis'], 400);
+                }
+
+                if (!is_string($phone) || trim($phone) === '' || mb_strlen(trim($phone), 'UTF-8') > 55) {
+                    return new JsonResponse(['status' => false, 'message' => 'Numéro de téléphone requis (55 caractères maximum)'], 400);
                 }
 
                 if ($service->isUserNameExist($name)) {
@@ -290,6 +295,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                 $user->set('status', 1);
                 $user->setUsername($name);
                 $user->set('roles', []);
+                $user->set('field_phone', trim($phone));
 
                 $saved = $user->save();
 
@@ -303,6 +309,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                         'id' => $user->id(),
                         'name' => $user->getAccountName(),
                         'mail' => $user->getEmail(),
+                        'phone' => $user->get('field_phone')->value,
                     ]);
 
                     $cookie = new Cookie(
@@ -365,6 +372,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                             'id' => $user->id(),
                             'name' => $user->getAccountName(),
                             'mail' => $user->getEmail(),
+                            'phone' => $user->hasField('field_phone') ? $user->get('field_phone')->value : NULL,
                             'roles' => $user->getRoles(),
                             'data' => $user_array,
                         ]);
