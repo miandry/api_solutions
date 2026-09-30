@@ -108,6 +108,45 @@ function _api_solutions_create_phone_field()
 }
 
 /**
+ * Create the optional client reference field on user entities.
+ */
+function _api_solutions_create_client_reference_field()
+{
+    $field_name = 'field_client';
+    $entity_type = 'user';
+
+    if (!FieldStorageConfig::loadByName($entity_type, $field_name)) {
+        FieldStorageConfig::create([
+            'field_name' => $field_name,
+            'entity_type' => $entity_type,
+            'type' => 'entity_reference',
+            'cardinality' => 1,
+            'settings' => [
+                'target_type' => 'node',
+            ],
+        ])->save();
+    }
+
+    if (!FieldConfig::loadByName($entity_type, 'user', $field_name)) {
+        FieldConfig::create([
+            'field_name' => $field_name,
+            'entity_type' => $entity_type,
+            'bundle' => 'user',
+            'label' => 'Client associé',
+            'required' => FALSE,
+            'settings' => [
+                'handler' => 'default',
+                'handler_settings' => [
+                    'target_bundles' => [
+                        'client' => 'client',
+                    ],
+                ],
+            ],
+        ])->save();
+    }
+}
+
+/**
  * Generate tokens for all existing users.
  */
 function _api_solutions_generate_tokens_for_all()

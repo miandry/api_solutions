@@ -17,6 +17,7 @@ function api_solutions_install()
 {
     _api_solutions_create_token_field();
     _api_solutions_create_phone_field();
+    _api_solutions_create_client_reference_field();
     _api_solutions_generate_tokens_for_all();
 }
 
@@ -35,4 +36,12 @@ function api_solutions_update_10001()
 function api_solutions_update_10002()
 {
     _api_solutions_create_phone_field();
+}
+
+/**
+ * Add the client reference field to user accounts.
+ */
+function api_solutions_update_10003()
+{
+    _api_solutions_create_client_reference_field();
 }

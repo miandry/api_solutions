@@ -11,6 +11,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Access\AccessResult;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Drupal\user\Entity\User;
+use Drupal\node\Entity\Node;
 use Drupal\Core\Cache\CacheableJsonResponse;
 use Drupal\Core\Cache\CacheableMetadata;
 use Symfony\Component\HttpFoundation\Cookie;
@@ -287,17 +288,46 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                     ], 400);
                 }
 
-                $user = User::create();
-                $user->setPassword($password);
-                $user->enforceIsNew();
-                $email = $name . \Drupal::service('uuid')->generate() . '@gmail.com';
-                $user->setEmail($email);
-                $user->set('status', 1);
-                $user->setUsername($name);
-                $user->set('roles', []);
-                $user->set('field_phone', trim($phone));
+                $transaction = \Drupal::database()->startTransaction();
+                try {
+                    $user = User::create();
+                    $user->setPassword($password);
+                    $user->enforceIsNew();
+                    $email = $name . \Drupal::service('uuid')->generate() . '@gmail.com';
+                    $user->setEmail($email);
+                    $user->set('status', 1);
+                    $user->setUsername($name);
+                    $user->set('roles', []);
+                    $user->set('field_phone', trim($phone));
 
-                $saved = $user->save();
+                    if (!$user->hasField('field_client')) {
+                        throw new \RuntimeException('Le champ de référence client est absent du compte utilisateur.');
+                    }
+
+                    $user->save();
+                    $client = Node::create([
+                        'type' => 'client',
+                        'title' => $name,
+                        'uid' => $user->id(),
+                    ]);
+                    if ($client->hasField('field_phone')) {
+                        $client->set('field_phone', trim($phone));
+                    }
+                    $client->save();
+
+                    $user->set('field_client', $client->id());
+                    $user->save();
+                    unset($transaction);
+                    $saved = TRUE;
+                } catch (\Throwable $e) {
+                    if (isset($transaction)) {
+                        $transaction->rollBack();
+                    }
+                    \Drupal::logger('api_solutions')->error('Erreur création client à l’inscription: @message', [
+                        '@message' => $e->getMessage(),
+                    ]);
+                    return new JsonResponse(['status' => false, 'message' => 'Erreur lors de la création du compte client'], 500);
+                }
 
                 if ($saved) {
                     $token = $service->generateBearerToken($user);
@@ -310,6 +340,7 @@ class ApiSolutionsController extends ControllerBase implements ContainerInjectio
                         'name' => $user->getAccountName(),
                         'mail' => $user->getEmail(),
                         'phone' => $user->get('field_phone')->value,
+                        'client_nid' => $client->id(),
                     ]);
 
                     $cookie = new Cookie(
